@@ -434,7 +434,7 @@ class Starbase(object):
         self.__headline = fp.readline().rstrip().split("\t")
         self.__dashline = fp.readline().rstrip().split("\t")
 
-        dashes = len([s for s in self.__dashline if re.match('-+' , s.strip())])
+        dashes = len([s for s in self.__dashline if re.match('^-+$' , s.strip())])
 
         # Read lines until the dashline is found
         #
@@ -448,7 +448,7 @@ class Starbase(object):
             self.__headline = self.__dashline
             self.__dashline = fp.readline().rstrip().split("\t")
 
-            dashes = len([s for s in self.__dashline if re.match('-+' , s.strip())])
+            dashes = len([s for s in self.__dashline if re.match('^-+$' , s.strip())])
 
         i = 0
         self.__indx = {}
