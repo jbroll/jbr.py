@@ -448,6 +448,7 @@ class Starbase(object):
             self.__headline = self.__dashline
             self.__dashline = fp.readline().rstrip().split("\t")
 
+
             dashes = len([s for s in self.__dashline if re.match('^-+$' , s.strip())])
 
         i = 0
@@ -458,9 +459,6 @@ class Starbase(object):
             self.__indx[col] = i
             self.__type.append(types[col] if ( types.has_key(col) ) else deftype)
             i += 1
-
-	#print "Types", types
-	#print "Types", self.__type
 
         # Read the data in, converting to types
         #
@@ -520,6 +518,10 @@ class Starbase(object):
     def __iter__(self) :
         return self.__data.__iter__()
 
+    def __contains__(self, indx):
+        if ( type(indx) == str ) :
+	    return indx in self.__head
+	
     def __getitem__(self, indx) :
         if ( type(indx) == str ) :
 	    if indx in self.__indx :
