@@ -35,10 +35,12 @@ def parcard(card) :
     return [name, value, comment]
 
 
-EOF = Exception("EOF")
+class Huh(Exception): pass
+class EOF(Exception): pass
+class BadEOF(Exception): pass
 
-dtype2bitpix = { 8: "u1", "int16": 16, "int32": 32, "float32": -32, "float64": -64 }
-bitpix2dtype = { 8: "u1", 16: "i2", 32: "i4", -32: "f4", -64: "f8" }
+dtype2bitpix = { 8: "u1", "int16": 16, "uint16": -16, "int32": 32, "int64": 64, "float32": -32, "float64": -64 }
+bitpix2dtype = { 8: "u1", 16: "i2", 32: "i4", 64: "i8", -32: "f4", -64: "f8" }
 
 class header(object) :
     def __init__(self, fp, primary=True, cards=None) :
@@ -59,12 +61,11 @@ class header(object) :
 	    card = fp.read(80)
 
 	    if len(card) == 0  : raise EOF
-	    if len(card) != 80 : raise Exception("BAD EOF")
+	    if len(card) != 80 : raise BadEOF
 
 	    if   card[0:8] == "SIMPLE  " : pass
-	    elif card[0:8] == "IMAGE   " : pass
-	    else :
-		raise Exception("This doesn't appear to be a FITS file")
+	    elif card[0:8] == "XTENSION" : pass
+	    else : raise Exception("This doesn't appear to be a FITS file")
 
 	    self.card.append(card)
 
@@ -108,16 +109,17 @@ class header(object) :
 
 	    self.card.append(fmtcard("NAXIS", len(naxis)))
 
-	    for i, j in enumerate(range(len(naxis)-1, -1, -1)) :
+	    #for i, j in enumerate(range(len(naxis)-1, -1, -1)) :
+	    for i in range(0, len(naxis)) :
 		axis = "NAXIS" + str(i+1)
-		self.card.append(fmtcard(axis, naxis[j]))
+		self.card.append(fmtcard(axis, naxis[i]))
 
 	    self.ncard     = len(self.card)+1
 	    self.headbloks = ((self.ncard*80)+(2880-1))/2880
 	    self.headbytes = self.headbloks * 2880
 
 	else:
-	    raise Exception("huh?")
+	    raise Huh
 
 	for i, card in enumerate(self.card) :		# Hash card in head for easy lookup
 	    try :
@@ -225,60 +227,75 @@ class hdu(header) :
 	super(hdu, self).__init__(fp, primary=primary, cards=cards)
 
 	if hasattr(fp, 'read') :
+	    if self.databytes > 0 :
+		self.data = numpy.fromfile(fp, dtype=bitpix2dtype[self.bitpix], count=self.datapixls)
 
-	    self.data = numpy.fromfile(fp, dtype=bitpix2dtype[self.bitpix], count=self.datapixls)
+		if swapped() :
+		    self.data.byteswap(True)
 
-	    if swapped() :
-		self.data.byteswap(True)
+		if self.bitpix == 16 and self.bzero == 32768 :
+		    self.data *= self.bscale
+		    self.data += self.bzero
+		    self.data.dtype = ">u2"
 
-	    if self.bitpix == 16 and self.bzero == -32768 :
-		self.data *= self.bscale
-		self.data += self.bzero
-		self.data.dtype = ">u2"
+		fp.read(self.databloks*2880 - self.databytes)	# Read the padd.
+	    
+		if len(self.shape) :
+		    self.data.shape = self.shape
 
-
-	    self.data.shape = self.shape
+	    else:
+	    	self.data = None
 
 	elif isinstance(fp, numpy.ndarray) :
 	    self.data = fp
 
 	else:
-	    raise Exception("huh?")
+	    raise Huh
 
-    def write(self, other) :
+    def writeto(self, other) :
 	if type(other) == str :
 	    other = __builtin__.open(other, "wb");
 
 	super(hdu, self).write(other)
 
-	if self.bitpix == 16 and self.bzero == -32768 :
+	if self.bitpix == 16 and self.bzero == 32768 :
 	    self.data /= self.bscale
 	    self.data -= self.bzero
 
 	if swapped() :
 	    self.data.byteswap(True)
 
-
 	self.data.tofile(other)
 
 	if swapped() :
 	    self.data.byteswap(True)
 
+	if self.bitpix == 16 and self.bzero == -32768 :
+	    self.data += self.bzero
+	    self.data *= self.bscale
+
 	other.write("\0" * (self.databloks*2880 - self.databytes))
 
+
 def open(fp) :
+    opened = 0
+
     if type(fp) == str :
-	fp = open(fp, "rb");
+	opened = 1
+	fp = __builtin__.open(fp, mode="rb");
 
     headers = []
 
     while 1 :
 	try :
-	    hdr = fits.hdu(sys.stdin)
+	    hdr = hdu(fp)
 	except EOF:
 	    break
 
 	headers.append(hdr)
+
+    if opened :
+	fp.close()
 
     return headers
 
