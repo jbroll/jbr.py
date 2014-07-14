@@ -234,9 +234,9 @@ class hdu(header) :
 		    self.data.byteswap(True)
 
 		if self.bitpix == 16 and self.bzero == 32768 :
-		    self.data *= self.bscale
 		    self.data += self.bzero
-		    self.data.dtype = ">u2"
+		    self.data *= self.bscale
+		    self.data.dtype = numpy.dtype("<u2")
 
 		fp.read(self.databloks*2880 - self.databytes)	# Read the padd.
 	    

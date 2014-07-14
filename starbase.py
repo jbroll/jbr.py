@@ -47,13 +47,12 @@ def Starbase_hdrtype(value) :
 	
 def Starbase_vector(value, type) : return value
 
-if __name__ != '__main__':		# The automated testing is setup for strings not numpy
-    try:
-	import numpy as np
-	Starbase_deftype = np.double
-	def Starbase_vector(value, type) : return np.array(value, dtype=type)
-    except ImportError:
-	pass
+try:
+    import numpy as np
+    Starbase_deftype = np.double
+    def Starbase_vector(value, type) : return np.array(value, dtype=type)
+except ImportError:
+    pass
 	
 
 class Starbase(object):
@@ -573,6 +572,11 @@ class Starbase(object):
 
         self.__setitem__(indx, value)
 
+    def __pow__(self, other):
+	if other == "headline" : return self.__headline
+
+	return None
+
     def __binop(self, other, command) : 
         fd, file1 = tempfile.mkstemp()
         os.close(fd)
@@ -654,8 +658,9 @@ class Starbase(object):
         self > file
 
 
-if __name__ == '__main__':
-    # jottable 5 X Y Z > input.tab
-    #
-    import doctest
-    doctest.testmod()
+#if __name__ == '__main__':
+#    # jottable 5 X Y Z > input.tab
+#    #
+#    import doctest
+#    doctest.testmod()
+

@@ -5,9 +5,17 @@ def readdata(file, types) :
 
         for row in file.readlines() :
             r = []
+
+	    i = 0
             for val in row.split("\t") :
-                i = 0
-                r.append(types[i](val))
+
+		try:
+		    value = types[i](val.strip())
+
+		except ValueError:
+		    value = val
+
+                r.append(value)
                 i = i + 1
 
             data.append(r)
