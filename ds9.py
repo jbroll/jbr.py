@@ -232,10 +232,19 @@ class ds9(object) :
     params = {    'shape':'circle', 'width':10, 'height':10, 'rot':0
                 , 'point':"box",
 
-                'shapes':["ellipse", "circle", "vector", "point", "line", "box"],
+                'shapes':["text", "ellipse", "circle", "vector", "point", "line", "box", "polygon", "polyline"],
             'attributes':["color",  "text",   "dashlist", "font"
                         , "select", "dash",   "fixed",    "edit"
                         , "move",   "rotate", "delete",   "tag"],
+
+        'polyline-coords':"%(x)f %(y)f",
+        'polyline-column':['x', 'y'],
+
+        'polygon-coords':"%(x)f %(y)f",
+        'polygon-column':['x', 'y'],
+
+        'text-coords':'%(x)f %(y)f"',
+        'text-column':['x', 'y', 'text'],
 
         'ellipse-coords':"%(x)f %(y)f %(a)f %(b)f %(rot)f",
         'ellipse-column':['x', 'y', 'a', 'b', 'rot'],
@@ -249,7 +258,7 @@ class ds9(object) :
 
           'point-coords':"%(x)f %(y)f",
           'point-column':['x', 'y'],
-          'point-attrib':" point = {%(point)s}",
+          'point-attrib':" point=%(point)s",
 
            'line-coords':"%(x1)f %(y1)f %(x2)f %(y2)f",
            'line-column':['x1', 'y1', 'x2', 'y2'],
@@ -270,7 +279,7 @@ class ds9(object) :
             self.xpa.set("regions delete all")
             return
 
-        if ( buffer == None ) :
+        if ( buffer is None ) :
             regions = self.xpa.get("regions")
 
             if ( parse == False ) :
@@ -296,15 +305,15 @@ class ds9(object) :
             if ( type(buffer) == str ) :
                 string = buffer
 
-            if ( type(buffer) == list ) :
+            if ( type(buffer) == list or type(buffer).__name__ == 'ndarray' ) :
                 # Fold any provided params into defaults
                 #
-                params = dict(ds9.params.items() + params.items())
+                params = {**ds9.params, **params}
 
-                if ( params.has_key("radius") ) :
+                if ( "radius" in params ) :
                     del(params["circle-width"])
 
-                if ( params.has_key("columns") ) :
+                if ( "columns" in params ) :
                     columns = params["columns"]
                     if ( type(columns) == str ) :
                         columns = columns.split()
@@ -320,14 +329,14 @@ class ds9(object) :
 
                     # Construct the attributes
                     #
-                    if ( params.has_key(shape + "-attrib") ) :
+                    if ( shape + "-attrib" in params ) :
                         attribute = params[shape + "-attrib"]
                     else :
                         attribute = ""
 
                     for a in params["attributes"] :
-                        if ( a in columns ) :
-                            attribute += " " + a + " = {%(" + a + ")s}"
+                        if ( a in columns or a in params ) :
+                            attribute += " " + a + "={%(" + a + ")s}"
 
                     if ( attribute != "" ) :
                         attribute = " #" + attribute
@@ -341,13 +350,12 @@ class ds9(object) :
                     for col in columns :
                         func = None
 
-                        if ( params.has_key(col) and callable(params[col]) ) :
+                        if col in params and callable(params[col]) :
                             func = params[col]
                         else :
                             shape_shifter = shape + "-" + col
 
-                        if (  params.has_key(shape_shifter) 
-                         and callable(params[shape_shifter]) ) :
+                        if shape_shifter in params and callable(params[shape_shifter]) :
                             if ( func == None ) :
                                 func = params[shape_shifter]
                             else :
@@ -362,7 +370,7 @@ class ds9(object) :
     
                 string = ""
                 for reg in buffer :
-                    if ( type(reg) == list ) :
+                    if ( type(buffer) == list or type(buffer).__name__ == 'ndarray' ) :
                         if ( shape_col >= 0 ) :         # Dynamic column selection
                             shape = reg[shape_col]      #  pull out the shape early
                         else :
@@ -371,21 +379,35 @@ class ds9(object) :
                         if ( shape == "box" and len(reg) == 3 ) :
                             reg.append(reg[len(reg)-1])
 
-                        # Combine the default values in the params dict with 
-                        # the values provided in the list and named in "columns".
-                        #
-                        p = dict(params.items() + zip(columns, reg))    # Copy the parameters, overlaying
+
+                        if shape.startswith("poly") :
+                            poly = []
+                            for x, y in zip(reg[::2], reg[1::2]):
+                                # for ( col, fun ) in coltran[shape].items() :    # Apply any transform functions
+                                poly.append(x)
+                                poly.append(y)
+                        else:
+                            # Combine the default values in the params dict with 
+                            # the values provided in the list and named in "columns".
+                            #
+                            p = dict(list(params.items()) + list(zip(columns, reg)))    # Copy the parameters, overlaying
                                                                         # the defaults.
-                        for ( col, fun ) in coltran[shape].items() :    # Apply any transform functions
-                            p[col] = fun(p[col])
+                            for ( col, fun ) in coltran[shape].items() :        # Apply any transform functions
+                                p[col] = fun(p[col])
 
                     else :
                         if ( type(reg) == dict ) :
                             p = dict(params.items() + reg.items())
 
-                    coords = p[shape + "-coords"]
 
-                    string += ("%(shape)s" + " " + coords + colattr[shape] + "\n") % p
+                    if shape.startswith("poly") :
+                        coords = params[shape + "-coords"]
+                        string += ( "%(shape)s" + " " 
+                                    + " ".join([coords % { "x": x, "y": y } for x, y in zip(poly[::2], poly[1::2])])
+                                    + colattr[shape] + "\n") % params
+                    else:
+                        coords = p[shape + "-coords"]
+                        string += ("%(shape)s" + " " + coords + colattr[shape] + "\n") % p
 
             self.xpa.set("regions", string)
 

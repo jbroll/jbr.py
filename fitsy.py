@@ -1,8 +1,8 @@
-import numpy as np, shutil, shlex, builtins, sys
+import numpy as np, shutil, shlex
+from pathlib import Path
 
 def swapped() : 
     return np.ndarray((1,), dtype='>i2', buffer=bytes([0, 1]))[0] == 1
-    # return np.ndarray((1),dtype='i2', buffer=str(chr(1) + chr(0)))[0] == 1
 
 def fmtcard(name, value, comment="") :
     if type(value) == int :
@@ -40,8 +40,8 @@ class Huh(Exception): pass
 class EOF(Exception): pass
 class BadEOF(Exception): pass
 
-dtype2bitpix = { 8: "u1", "int16": 16, "uint16": -16, "int32": 32, "int64": 64, "float32": -32, "float64": -64 }
-bitpix2dtype = { 8: "u1", 16: "i2", 32: "i4", 64: "i8", -32: "f4", -64: "f8" }
+dtype2bitpix = { "uint8": 8, "int16": 16, "uint16": -16, "int32": 32, "int64": 64, "float32": -32, "float64": -64 }
+bitpix2dtype = { 8: "uint8", 16: "i2", -16: "uint16", 32: "i4", 64: "i8", -32: "f4", -64: "f8" }
 
 class header(object) :
     def __init__(self, fp, primary=True, cards=None) :
@@ -53,7 +53,7 @@ class header(object) :
         self.head   = { "GCOUNT": [0, 1], "PCOUNT": [0, 0], "BSCALE": [0, 1], "BZERO": [0, 1] }
 
         if type(fp) == str :
-            fp = builtins.open(fp, "rb")
+            fp = open(fp, "rb")
 
         if hasattr(fp, 'read') :
             try:    self.hoff = fp.tell()
@@ -89,7 +89,7 @@ class header(object) :
             self.headbytes = self.headbloks * 2880
 
             if len(self.card) % 80 != 0 :
-                try :   fp.seek(self.hoff + self.headbytes, 0)
+                try :   fp.seek(int(self.hoff + self.headbytes), 0)
                 except: fp.read(self.headbytes - (len(self.card)+1) * 80).decode()
 
             try:    self.doff = fp.tell()
@@ -104,20 +104,19 @@ class header(object) :
 
             self.card.append(fmtcard("BITPIX", dtype2bitpix[str(fp.dtype)]))
 
-            naxis = fp.shape
+            naxis = fp.shape[::-1]
             if len(naxis) == 1 :                        # Force NAXIS >= 2
                 naxis = [naxis[0], 1]
 
             self.card.append(fmtcard("NAXIS", len(naxis)))
 
-            #for i, j in enumerate(range(len(naxis)-1, -1, -1)) :
             for i in range(0, len(naxis)) :
                 axis = "NAXIS" + str(i+1)
                 self.card.append(fmtcard(axis, naxis[i]))
 
             self.ncard     = len(self.card)+1
-            self.headbloks = ((self.ncard*80)+(2880-1))/2880
-            self.headbytes = self.headbloks * 2880
+            self.headbloks = int(int(((self.ncard*80)+(2880-1)))/2880)
+            self.headbytes = int(self.headbloks * 2880)
 
         else:
             raise Huh
@@ -175,7 +174,7 @@ class header(object) :
 
     def __setitem__(self, indx, value) :
         if ( type(indx) == str ) :
-            if self.head.has_key(indx) :
+            if indx in self.head :
 
                 self.head[indx] = (self.head[indx][0], value)
 
@@ -188,8 +187,8 @@ class header(object) :
                 self.card.append(fmtcard(indx, value))
 
                 self.ncard     = len(self.card)+1
-                self.headbloks = ((self.ncard*80)+(2880-1))/2880
-                self.headbytes = self.headbloks * 2880
+                self.headbloks = int(int(((self.ncard*80)+(2880-1)))/2880)
+                self.headbytes = int(self.headbloks * 2880)
 
     def __getattr__(self, indx) :
         return self.__getitem__(indx)
@@ -217,6 +216,11 @@ class header(object) :
         other.write(cards.encode())
 
     def write(self, other) :
+        if isinstance(other, Path) :
+            other = open(other, "wb");
+        if isinstance(other, str) :
+            other = open(other, "wb");
+
         for card in self.card :
             self.writecards(card, other)
 
@@ -226,7 +230,7 @@ class header(object) :
 class hdu(header) :
     def __init__(self, fp, primary=True, cards=None) :
         if type(fp) == str :
-            fp = builtins.open(fp, "rb");
+            fp = open(fp, "rb");
 
         super(hdu, self).__init__(fp, primary=primary, cards=cards)
 
@@ -242,7 +246,7 @@ class hdu(header) :
                     self.data *= self.bscale
                     self.data.dtype = np.dtype("<u2")
 
-                fp.read(self.databloks*2880 - self.databytes)   # Read the padd.
+                fp.read(int(self.databloks*2880 - self.databytes))   # Read the padd.
             
                 if len(self.shape) :
                     self.data.shape = self.shape
@@ -257,12 +261,14 @@ class hdu(header) :
             raise Huh
 
     def writeto(self, other) :
-        if type(other) == str :
-            other = builtins.open(other, "wb");
+        if isinstance(other, Path) :
+            other = open(other, "wb");
+        if isinstance(other, str) :
+            other = open(other, "wb");
 
         super(hdu, self).write(other)
 
-        if self.bitpix == 16 and self.bzero == 32768 :
+        if self.bitpix == 16 and self.bzero == -32768 :
             self.data /= self.bscale
             self.data -= self.bzero
 
@@ -281,7 +287,7 @@ class hdu(header) :
         self.writecards("\0" * int((self.databloks*2880 - self.databytes)), other)
 
 
-def open(fp) :
+def fits(fp) :
     opened = 0
 
     if type(fp) == str :
